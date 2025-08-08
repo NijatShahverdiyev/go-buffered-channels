@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Buffered Channel Visualization</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #1e1e1e;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .title {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #00add8;
+            font-size: 24px;
+        }
+
+        .channel-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 40px 0;
+            position: relative;
+            min-height: 200px;
+        }
+
+        .goroutine {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+            margin: 0 20px;
+            position: relative;
+        }
+
+        .sender {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+        }
+
+        .receiver {
+            background: linear-gradient(45deg, #4834d4, #686de0);
+        }
+
+        .channel {
+            display: flex;
+            background: #2d3436;
+            border: 3px solid #00add8;
+            border-radius: 15px;
+            padding: 10px;
+            position: relative;
+            margin: 0 20px;
+        }
+
+        .buffer-slot {
+            width: 60px;
+            height: 60px;
+            border: 2px dashed #636e72;
+            border-radius: 10px;
+            margin: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .buffer-slot.filled {
+            background: linear-gradient(45deg, #00b894, #00cec9);
+            border: 2px solid #00b894;
+            border-style: solid;
+        }
+
+        .data-packet {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(45deg, #fdcb6e, #f39c12);
+            border-radius: 50%;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #2d3436;
+            z-index: 10;
+        }
+
+        .arrow {
+            position: absolute;
+            font-size: 24px;
+            color: #00add8;
+            z-index: 5;
+        }
+
+        .send-arrow {
+            left: 110px;
+            top: 50%;
+            transform: translateY(-50%);
+            animation: pulse 2s infinite;
+        }
+
+        .receive-arrow {
+            right: 110px;
+            top: 50%;
+            transform: translateY(-50%);
+            animation: pulse 2s infinite;
+        }
+
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 14px;
+            min-height: 20px;
+            color: #ddd;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #00add8;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #0088aa;
+        }
+
+        button:disabled {
+            background: #636e72;
+            cursor: not-allowed;
+        }
+
+        .info-panel {
+            background: #2d3436;
+            border: 1px solid #636e72;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .code-snippet {
+            background: #1e1e1e;
+            border: 1px solid #00add8;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        .go-keyword {
+            color: #ff6b6b;
+        }
+
+        .go-type {
+            color: #4834d4;
+        }
+
+        .go-string {
+            color: #00b894;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; transform: translateY(-50%) scale(1); }
+            50% { opacity: 1; transform: translateY(-50%) scale(1.2); }
+        }
+
+        @keyframes slide-to-channel {
+            from { transform: translateX(0); }
+            to { transform: translateX(150px); }
+        }
+
+        @keyframes slide-from-channel {
+            from { transform: translateX(0); }
+            to { transform: translateX(150px); }
+        }
+
+        @keyframes blocked {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .blocked {
+            animation: blocked 1s infinite;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Go Buffered Channel (Buffer Size: 3)</h1>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(45deg, #ff6b6b, #ee5a24);"></div>
+                <span>Sender Goroutine</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(45deg, #4834d4, #686de0);"></div>
+                <span>Receiver Goroutine</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(45deg, #fdcb6e, #f39c12);"></div>
+                <span>Data Packet</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(45deg, #00b894, #00cec9);"></div>
+                <span>Filled Buffer Slot</span>
+            </div>
+        </div>
+
+        <div class="channel-container">
+            <div class="goroutine sender" id="sender">
+                <div>SENDER<br/>GO</div>
+            </div>
+            
+            <div class="arrow send-arrow">→</div>
+            
+            <div class="channel" id="channel">
+                <div class="buffer-slot" data-index="0"></div>
+                <div class="buffer-slot" data-index="1"></div>
+                <div class="buffer-slot" data-index="2"></div>
+            </div>
+            
+            <div class="arrow receive-arrow">→</div>
+            
+            <div class="goroutine receiver" id="receiver">
+                <div>RECEIVER<br/>GO</div>
+            </div>
+        </div>
+
+        <div class="status" id="status">Ready to demonstrate buffered channel operations</div>
+
+        <div class="controls">
+            <button onclick="sendData()">Send Data</button>
+            <button onclick="receiveData()">Receive Data</button>
+            <button onclick="autoDemo()">Auto Demo</button>
+            <button onclick="reset()">Reset</button>
+        </div>
+
+        <div class="info-panel">
+            <h3>How Go Buffered Channels Work:</h3>
+            <div class="code-snippet">
+<span class="go-keyword">ch</span> := <span class="go-keyword">make</span>(<span class="go-keyword">chan</span> <span class="go-type">int</span>, <span class="go-string">3</span>) <span style="color: #636e72;">// Buffer size 3</span>
+
+<span class="go-keyword">go func</span>() {
+    ch <- <span class="go-string">1</span> <span style="color: #636e72;">// Send to channel</span>
+    ch <- <span class="go-string">2</span> <span style="color: #636e72;">// Send to channel</span>
+    ch <- <span class="go-string">3</span> <span style="color: #636e72;">// Send to channel (buffer full)</span>
+    ch <- <span class="go-string">4</span> <span style="color: #636e72;">// Blocks until buffer has space</span>
+}()
+
+<span class="go-keyword">go func</span>() {
+    val := <-ch <span style="color: #636e72;">// Receive from channel</span>
+}()
+            </div>
+            
+            <p><strong>Key Concepts:</strong></p>
+            <ul>
+                <li><strong>Non-blocking sends:</strong> Senders don't block until buffer is full</li>
+                <li><strong>Non-blocking receives:</strong> Receivers don't block if buffer has data</li>
+                <li><strong>FIFO ordering:</strong> First data in, first data out</li>
+                <li><strong>Blocking behavior:</strong> Sends block when buffer is full, receives block when buffer is empty</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let buffer = [];
+        let packetCounter = 1;
+        let isAutoDemo = false;
+        let autoInterval;
+
+        function updateDisplay() {
+            const slots = document.querySelectorAll('.buffer-slot');
+            const status = document.getElementById('status');
+            
+            slots.forEach((slot, index) => {
+                if (index < buffer.length) {
+                    slot.classList.add('filled');
+                    slot.textContent = buffer[index];
+                } else {
+                    slot.classList.remove('filled');
+                    slot.textContent = '';
+                }
+            });
+
+            // Update status
+            if (buffer.length === 0) {
+                status.textContent = "Channel buffer is empty - receivers would block";
+                document.getElementById('receiver').classList.add('blocked');
+                document.getElementById('sender').classList.remove('blocked');
+            } else if (buffer.length === 3) {
+                status.textContent = "Channel buffer is full - senders would block";
+                document.getElementById('sender').classList.add('blocked');
+                document.getElementById('receiver').classList.remove('blocked');
+            } else {
+                status.textContent = `Buffer has ${buffer.length}/3 items - no blocking occurs`;
+                document.getElementById('sender').classList.remove('blocked');
+                document.getElementById('receiver').classList.remove('blocked');
+            }
+        }
+
+        function sendData() {
+            if (buffer.length >= 3) {
+                document.getElementById('status').textContent = "Cannot send - buffer is full! Sender would block.";
+                return;
+            }
+
+            const packet = packetCounter++;
+            buffer.push(packet);
+            
+            // Create visual packet animation
+            createPacketAnimation('send', packet);
+            
+            setTimeout(() => {
+                updateDisplay();
+            }, 500);
+        }
+
+        function receiveData() {
+            if (buffer.length === 0) {
+                document.getElementById('status').textContent = "Cannot receive - buffer is empty! Receiver would block.";
+                return;
+            }
+
+            const packet = buffer.shift();
+            
+            // Create visual packet animation
+            createPacketAnimation('receive', packet);
+            
+            setTimeout(() => {
+                updateDisplay();
+            }, 500);
+        }
+
+        function createPacketAnimation(type, value) {
+            const packet = document.createElement('div');
+            packet.className = 'data-packet';
+            packet.textContent = value;
+            packet.style.opacity = '0';
+            
+            const container = document.querySelector('.channel-container');
+            container.appendChild(packet);
+            
+            if (type === 'send') {
+                packet.style.left = '80px';
+                packet.style.top = '50%';
+                packet.style.transform = 'translateY(-50%)';
+                
+                setTimeout(() => {
+                    packet.style.opacity = '1';
+                    packet.style.transition = 'all 0.5s ease';
+                    packet.style.left = '250px';
+                }, 50);
+                
+            } else {
+                packet.style.left = '550px';
+                packet.style.top = '50%';
+                packet.style.transform = 'translateY(-50%)';
+                
+                setTimeout(() => {
+                    packet.style.opacity = '1';
+                    packet.style.transition = 'all 0.5s ease';
+                    packet.style.left = '700px';
+                }, 50);
+            }
+            
+            setTimeout(() => {
+                packet.remove();
+            }, 600);
+        }
+
+        function autoDemo() {
+            if (isAutoDemo) {
+                clearInterval(autoInterval);
+                isAutoDemo = false;
+                document.querySelector('button[onclick="autoDemo()"]').textContent = 'Auto Demo';
+                return;
+            }
+
+            isAutoDemo = true;
+            document.querySelector('button[onclick="autoDemo()"]').textContent = 'Stop Demo';
+            
+            autoInterval = setInterval(() => {
+                // Alternate between sending and receiving
+                if (Math.random() > 0.5) {
+                    if (buffer.length < 3) sendData();
+                } else {
+                    if (buffer.length > 0) receiveData();
+                }
+            }, 1500);
+        }
+
+        function reset() {
+            if (isAutoDemo) {
+                clearInterval(autoInterval);
+                isAutoDemo = false;
+                document.querySelector('button[onclick="autoDemo()"]').textContent = 'Auto Demo';
+            }
+            
+            buffer = [];
+            packetCounter = 1;
+            updateDisplay();
+            document.getElementById('status').textContent = "Ready to demonstrate buffered channel operations";
+        }
+
+        // Initialize display
+        updateDisplay();
+    </script>
+</body>
+</html>
